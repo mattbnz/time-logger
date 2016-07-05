@@ -54,8 +54,10 @@ type Report struct {
 }
 
 func read_data_file(in io.Reader) (events []Event, err error) {
+	// Reads data lines, merging consecutive lines with the same name.
 	lines := bufio.NewScanner(in)
 	line_number := 0
+	last_name := ""
 	for lines.Scan() {
 		line_number++
 		fields := strings.SplitN(lines.Text(), " ", 7)
@@ -66,6 +68,9 @@ func read_data_file(in io.Reader) (events []Event, err error) {
 			if err != nil {
 				return nil, errors.New(fmt.Sprint("Field ", i, " on line ", line_number, " is not numeric: ", err))
 			}
+		}
+		if fields[6] == last_name {
+			continue
 		}
 		events = append(events, Event{
 			Name: fields[6],
@@ -79,6 +84,7 @@ func read_data_file(in io.Reader) (events []Event, err error) {
 				0, // Nanoseconds
 				time.Local),
 		})
+		last_name = fields[6]
 	}
 	if err := lines.Err(); err != nil {
 		return nil, err

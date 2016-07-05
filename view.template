@@ -34,8 +34,8 @@
       <div class='day'>
         {{range .Events}}
           <div class='event_outer' style='background-color: {{.Color}}; height: {{.Height}}%'>
-            <div class='event_inner'>
-              <span title='{{.Name}} ({{.DurationDescription}})'>{{.Name}}</span>
+            <div class='event_inner' title='{{.Name}} ({{.DurationDescription}})'>
+              {{.Name}}
             </div>
           </div>
         {{end}}

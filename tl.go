@@ -46,12 +46,16 @@ type Event struct {
 }
 
 type Day struct {
+	Date   time.Time
 	Events []Event
 }
 
 type Report struct {
 	Days []Day
 }
+
+var ignoreNames = map[string]struct{} {"screensaver":{}, "":{}}
+
 
 func read_data_file(in io.Reader) (events []Event, err error) {
 	// Reads data lines, merging consecutive lines with the same name.
@@ -145,6 +149,9 @@ func split_by_day(events []Event) (by_day []Day) {
 				}
 				current_day = day
 			}
+			if this_day.Date.IsZero() {
+				this_day.Date = day
+			}
 			this_day.Events = append(this_day.Events, first_day_of_e)
 			if start_of_day(first_day_of_e.Time) == start_of_day(e.Time) {
 				break
@@ -189,6 +196,23 @@ func (e *Event) DurationDescription() string {
 	return (DescribeDuration(e.OriginalDuration) +
 		" of " + DescribeDuration(e.TotalDuration))
 
+}
+
+func (d *Day) WorkingHours() float64 {
+	sum := 0.0
+	for _, e := range d.Events {
+		if _, ok := ignoreNames[e.Name]; ok {
+			continue
+		}
+		sum += e.Duration.Hours()
+	}
+	return sum
+}
+
+func (d *Day) Description() string {
+	return  d.Date.Format("Mon 2 Jan 2006") + " (" +
+		fmt.Sprintf("%.1f", d.WorkingHours()) +
+		" working hours)"
 }
 
 func (e *Event) Height() float32 {

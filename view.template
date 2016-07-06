@@ -4,6 +4,7 @@
       body { margin: 0; padding: 0; height: 100%; width: {{.BodyWidth}}% }
       html, day { margin: 0; padding: 0; height: 100% }
       .day { width: {{.DayWidth}}%; float: left }
+      .day_title { border: thin solid black; }
       .event_outer { overflow: hidden; margin: 0 }
       .event_inner { height: 100%; padding: 2px; border: thin solid black;
                      font-family: Verdana, Geneva, sans-serif; 
@@ -32,6 +33,7 @@
   <body onload="onload_things()">
     {{range .Days}}
       <div class='day'>
+        <div class='day_title'>{{.Description}}</div>
         {{range .Events}}
           <div class='event_outer' style='background-color: {{.Color}}; height: {{.Height}}%'>
             <div class='event_inner' title='{{.Name}} ({{.DurationDescription}})'>

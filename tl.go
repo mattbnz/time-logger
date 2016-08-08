@@ -210,9 +210,9 @@ func (d *Day) WorkingHours() float64 {
 }
 
 func (d *Day) Description() string {
-	return  d.Date.Format("Mon 2 Jan 2006") + " (" +
+	return  d.Date.Format("2006-01-02") + " (" +
 		fmt.Sprintf("%.1f", d.WorkingHours()) +
-		" working hours)"
+		" WH)"
 }
 
 func (e *Event) Height() float32 {

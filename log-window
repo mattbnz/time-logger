@@ -1,0 +1,24 @@
+#!/bin/bash
+$HOME/time-logger/start-logger
+
+function log() {
+  curl -o/dev/null -d "thing=$1" http://localhost:29804/log_submit &>/dev/null
+}
+
+export DISPLAY=:0
+if gnome-screensaver-command -q | grep -q "is active"; then
+  log "screensaver"
+  exit
+fi
+if cinnamon-screensaver-command -q | grep -q "is active"; then
+  log "screensaver"
+  exit
+fi
+
+wnd_focus=$(xdotool getwindowfocus)
+wnd_title=$(xprop -id $wnd_focus WM_NAME)
+lookfor='"(.*)"'
+if [[ "$wnd_title" =~ $lookfor ]]; then
+  wnd_title=${BASH_REMATCH[1]}
+  log "$wnd_title"
+fi

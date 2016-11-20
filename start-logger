@@ -1,0 +1,6 @@
+#!/bin/bash
+if ps aux | grep -v grep | grep -iv SCREEN | grep -q $HOME/time-logger/tl; then
+  exit 0
+fi
+screen -d -m -S time-logger $HOME/time-logger/tl --listen_address=localhost \
+  --log_file=$HOME/.tl.log --template_path=$HOME/time-logger

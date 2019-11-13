@@ -3,13 +3,14 @@
     <style type='text/css'>
       body { margin: 0; padding: 0; height: 100%; width: {{.BodyWidth}}% }
       html, .day { margin: 0; padding: 0; height: 95% }
-      .week { float: left;}
+      .week { float: left; margin-top: 1.3em;}
       .day { float: left }
       .title { border: thin solid black; }
       .event_outer { overflow: hidden; margin: 0 }
       .event_inner { height: 100%; padding: 2px; border: thin solid black;
                      font-family: Verdana, Geneva, sans-serif; 
                      color: white; font-weight: bold }
+      .search { width: 100%; position: fixed; top: 0; left: 0; height: 1em;}
     </style>
     <script type="text/javascript">
       document.onkeypress = function(e) {
@@ -32,13 +33,25 @@
     </script>
   </head>
   <body onload="onload_things()">
+    <div class='search'>
+        <form method="get" action="/search" style="display: inline;">
+        Search Term: <input type="text" value="{{.SearchTerm}}" name="q">&nbsp;
+        &nbsp;
+        Since: <input type="text" value="{{.SearchDate}}" name="date">&nbsp;
+        &nbsp;
+        <input type="submit" value="Search">&nbsp;
+        <input type="button" value="Reset" onclick="javascript:document.location='/search';">&nbsp;
+        </form>
+        &nbsp;
+        {{.SearchTerm}} covers {{.SearchHours}} of {{.WorkingHours}} total working hours ({{.SearchPercent}}%)
+    </div>
     {{range .Weeks}}
       <div class='week' style='width: {{sum .NumDays $.DayWidth}}%;'>
-        <div class='title'>{{.Description}}</div>
+        <div class='title'>{{.SearchDescription}}</div>
         {{$dayWidth := .DayWidth}}
         {{range .Days}}
           <div class='day' style='width: {{$dayWidth}}%;'>
-            <div class='title'>{{.Description}}</div>
+            <div class='title'>{{.SearchDescription}}</div>
             {{range .Events}}
               <div class='event_outer' style='background-color: {{.Color}}; height: {{.Height}}%'>
                 <div class='event_inner' title='{{.Name}} ({{.DurationDescription}})'>

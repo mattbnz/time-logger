@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+        "math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -50,12 +51,21 @@ type Day struct {
 	Events []Event
 }
 
-type Report struct {
-	Days []Day
+type Week struct {
+        Number          int
+        AverageWH       float32  // Average Working Hours
+        AverageSH       float32  // Average hours matching search term
+        Days            []Day
 }
 
-var ignoreNames = map[string]struct{} {"screensaver":{}, "":{}}
+type Report struct {
+	Weeks           []Week
+        SearchTerm      string
+        SearchDate      string
+}
 
+var ignoreNames = map[string]string {"screensaver":"", "":""}
+var otherWork = "work"
 
 func read_data_file(in io.Reader) (events []Event, err error) {
 	// Reads data lines, merging consecutive lines with the same name.
@@ -94,6 +104,18 @@ func read_data_file(in io.Reader) (events []Event, err error) {
 		return nil, err
 	}
 	return
+}
+
+func drop_consecutive_events(in []Event) (out []Event) {
+        last_name := ""
+        for _, e := range in {
+                if e.Name == last_name {
+                        continue
+                }
+                out = append(out, e)
+                last_name = e.Name
+        }
+        return
 }
 
 func calculate_durations(events []Event) {
@@ -162,6 +184,31 @@ func split_by_day(events []Event) (by_day []Day) {
 	return
 }
 
+func group_by_week(by_day []Day) (by_week []Week) {
+        var this_week Week
+        for _, d := range by_day {
+                _, week := d.Date.ISOWeek()
+                if (week != this_week.Number) {
+                        if (this_week.Number != 0) {
+                                this_week.AverageWH /= float32(math.Min(5,
+                                                        float64( len(this_week.Days))))
+                                this_week.AverageSH /= float32(math.Min(5,
+                                                        float64( len(this_week.Days))))
+                                by_week = append(by_week, this_week)
+                                this_week = Week{}
+                        }
+                        this_week.Number = week
+                }
+                this_week.AverageWH += float32(d.WorkingHours())
+                this_week.AverageSH += float32(d.SearchHours())
+                this_week.Days = append(this_week.Days, d)
+        }
+        this_week.AverageWH /= float32(math.Min(5, 
+                                        float64(len(this_week.Days))))
+        by_week = append(by_week, this_week)
+        return
+}
+
 func (e *Event) TimeOfDay() int {
 	return e.Time.Hour()*3600 + e.Time.Minute()*60 + e.Time.Second()
 }
@@ -170,6 +217,9 @@ func (e *Event) Color() template.CSS {
 	if e.Name == "" {
 		return template.CSS("white")
 	}
+        if (e.Name == otherWork) {
+                return template.CSS("grey")
+        }
 	hash := sha1.New()
 	io.WriteString(hash, e.Name)
 	hue := 360.0 * int(hash.Sum(nil)[0]) / 256.0
@@ -209,30 +259,122 @@ func (d *Day) WorkingHours() float64 {
 	return sum
 }
 
+func (d *Day) SearchHours() float64 {
+        sum := 0.0
+        for _, e := range d.Events {
+                if _, ok := ignoreNames[e.Name]; ok {
+                        continue
+                }
+                if e.Name != otherWork {
+                        sum += e.Duration.Hours()
+                }
+        }
+        return sum
+}
+
+func (w *Week) SearchHours() float64 {
+        sum := 0.0
+        for _, d := range w.Days {
+                sum += d.SearchHours()
+        }
+        return sum
+}
+
+func (w *Week) WorkingHours() float64 {
+        sum := 0.0
+        for _, d := range w.Days {
+                sum += d.WorkingHours()
+        }
+        return sum
+}
+
 func (d *Day) Description() string {
 	return  d.Date.Format("2006-01-02") + " (" +
 		fmt.Sprintf("%.1f", d.WorkingHours()) +
 		" WH)"
 }
 
+func (d *Day) SearchDescription() string {
+        return  d.Date.Format("2006-01-02") + " (" +
+                fmt.Sprintf("%.1f/%.1f",
+                 d.SearchHours(), d.WorkingHours()) +
+                " WH)"
+}
+
+func (w *Week) Description() string {
+        return fmt.Sprintf("Week %d (%.1f WH/day)",
+                           w.Number, w.AverageWH)
+}
+
+func (w *Week) SearchDescription() string {
+        sh := w.SearchHours()
+        wh := w.WorkingHours()
+        return fmt.Sprintf("Week %d (%.1f/%.1f WH - %.1f%%)",
+                            w.Number, sh, wh, sh/wh * 100.0)
+}
+
+func (w *Week) NumDays() int {
+        return len(w.Days)
+}
+
+func (w *Week) DayWidth() float32 {
+        return 100 / float32(len(w.Days))
+}
+
 func (e *Event) Height() float32 {
 	return 100 * float32(e.Duration.Seconds()) / 86400
 }
 
+func (r Report) NumDays() int {
+        days := 0
+        for _, w := range r.Weeks {
+                days += len(w.Days)
+        }
+        return days
+}
+
 func (r Report) BodyWidth() float32 {
 	days_on_screen := *initial_days
-	if len(r.Days) < days_on_screen {
-		days_on_screen = len(r.Days)
+	if r.NumDays() < days_on_screen {
+		days_on_screen = r.NumDays()
 	}
-	return 100 * float32(len(r.Days)) / float32(days_on_screen)
+	return 100 * float32(r.NumDays()) / float32(days_on_screen)
 }
 
 func (r Report) DayWidth() float32 {
-	return 100.0 / float32(len(r.Days))
+	return 100.0 / float32(r.NumDays())
 }
 
-func generate_report(days []Day) (td Report) {
-	td.Days = days
+func (r Report) WorkingHours() string {
+        sum := 0.0
+        for _, w := range r.Weeks {
+                sum += w.WorkingHours()
+        }
+        return fmt.Sprintf("%.1f", sum)
+}
+
+func (r Report) SearchHours() string {
+        sum := 0.0
+        for _, w := range r.Weeks {
+                sum += w.SearchHours()
+        }
+        return fmt.Sprintf("%.1f", sum)
+}
+
+func (r Report) SearchPercent() string {
+        sum_s := 0.0
+        sum_w := 0.0
+        for _, w := range r.Weeks {
+                sum_s += w.SearchHours()
+                sum_w += w.WorkingHours()
+        }
+        return fmt.Sprintf("%.1f", sum_s/sum_w * 100.0)
+}
+
+
+
+func generate_report(weeks []Week) (td Report) {
+	td.Weeks = weeks
 	return
 }
 
@@ -245,8 +387,11 @@ func backfill_first_day(d *Day) {
 	d.Events = first_day_events
 }
 
+func sum(a int, b float32) float32 { return float32(a) * b }
+
 func execute_template(template_name string, data interface{}, out io.Writer) error {
-	t := template.New("tl")
+        funcMap := template.FuncMap{"sum": sum}
+	t := template.New("tl").Funcs(funcMap)
 	t, err := t.ParseFiles(filepath.Join(*template_path, template_name))
 	if err != nil {
 		return err
@@ -256,6 +401,28 @@ func execute_template(template_name string, data interface{}, out io.Writer) err
 		return err
 	}
 	return nil
+}
+
+func filter_by_term(events []Event, search_term string) {
+        for i, e := range events {
+                if new_name, ok := ignoreNames[e.Name]; ok {
+                        events[i].Name = new_name
+                        continue
+                }
+                if strings.Index(strings.ToLower(e.Name),
+                                 strings.ToLower(search_term)) == -1 {
+                        events[i].Name = otherWork
+                }
+        }
+}
+func filter_after_date(events []Event, start_date time.Time) (out []Event) {
+        for _, e := range events {
+                if start_date.After(e.Time) {
+                        continue
+                }
+                out = append(out, e)
+        }
+        return
 }
 
 func view_handler(w http.ResponseWriter, r *http.Request) {
@@ -274,13 +441,55 @@ func view_handler(w http.ResponseWriter, r *http.Request) {
 	calculate_total_durations(all_events)
 	by_day := split_by_day(all_events)
 	backfill_first_day(&by_day[0])
-	report := generate_report(by_day)
+        by_week := group_by_week(by_day)
+	report := generate_report(by_week)
 	err = execute_template("view.template", report, w)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	return
+}
+
+func search_handler(w http.ResponseWriter, r *http.Request) {
+        log_file, err := os.Open(*log_filename)
+        if err != nil {
+                http.Error(w, err.Error(), http.StatusInternalServerError)
+                return
+        }
+        defer log_file.Close()
+        all_events, err := read_data_file(log_file)
+        if err != nil {
+                http.Error(w, err.Error(), http.StatusInternalServerError)
+                return
+        }
+        search_term := r.URL.Query().Get("q")
+        filter_by_term(all_events, search_term)
+        search_date := r.URL.Query().Get("date")
+        if (search_date != "") {
+                parts := strings.Split(search_date, "-")
+                year,  _ := strconv.Atoi(parts[0])
+                month,  _ := strconv.Atoi(parts[1])
+                day,  _ := strconv.Atoi(parts[2])
+                start_date := time.Date(year, time.Month(month), day,
+                        0, 0, 0, 0, time.Local)
+                all_events = filter_after_date(all_events, start_date)
+        }
+        events := drop_consecutive_events(all_events)
+        calculate_durations(events)
+        calculate_total_durations(events)
+        by_day := split_by_day(events)
+        backfill_first_day(&by_day[0])
+        by_week := group_by_week(by_day)
+        report := generate_report(by_week)
+        report.SearchTerm = search_term
+        report.SearchDate = search_date
+        err = execute_template("search.template", report, w)
+        if err != nil {
+                http.Error(w, err.Error(), http.StatusInternalServerError)
+                return
+        }
+        return
 }
 
 func log_handler(w http.ResponseWriter, r *http.Request) {
@@ -336,6 +545,7 @@ func log_submit_handler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flag.Parse()
 	http.HandleFunc("/view", view_handler)
+        http.HandleFunc("/search", search_handler)
 	http.HandleFunc("/log", log_handler)
 	http.HandleFunc("/log_submit", log_submit_handler)
 	err := http.ListenAndServe(*listen_address+":"+strconv.Itoa(*port), nil)
